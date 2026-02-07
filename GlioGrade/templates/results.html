@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Diagnosis Results{% endblock %}
+
+{% block body_class %}results{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+        <h1>Scan <span>Results</span></h1>
+        <p>Review the glioma classification and MRI scan slices below.</p>
+    </div>
+</section>
+
+<section class="confirm-section">
+    <h5><strong>Glioma Type:</strong> {{ tumor_type }} (Confidence: {{ confidence_type }}%)</h5>
+    <h5><strong>Grade:</strong> {{ grade }} (Confidence: {{ confidence_grade }}%)</h5>
+
+    <div class="controls">
+        <label for="slice-slider">Slice:</label>
+        <input type="range" id="slice-slider" min="0" max="100" value="50" disabled>
+        <label for="slice-type">View:</label>
+        <select id="slice-type">
+            <option value="axial">Axial</option>
+            <option value="coronal">Coronal</option>
+            <option value="sagittal">Sagittal</option>
+        </select>
+    </div>
+
+    <div class="visualization-grid">
+        <div class="vis-container" id="vis-t1">
+            <h3>T2 Scan</h3>
+            <div class="loader"></div>
+            <img class="mri-slice" src="" alt="MRI Slice">
+            <p id="slice-filename" style="margin-top: 10px; font-weight: 500;"></p>
+        </div>
+    </div>
+
+    <div class="button-group">
+        <a href="{{ url_for('upload') }}" class="cta">Upload Another Scan</a>
+        <a href="{{ url_for('home') }}" class="cta special">Back to Home</a>
+    </div>
+
+    <script>
+        const folder = "{{ folder }}";
+        const orientationSelect = document.getElementById('slice-type');
+        const slider = document.getElementById('slice-slider');
+        const img = document.querySelector('.mri-slice');
+        const filenameDisplay = document.getElementById('slice-filename');
+
+        let slices = {};
+        let currentOrientation = 'axial';
+
+        function fetchSlices(orientation) {
+            fetch(`/get_slices/${folder}/${orientation}`)
+                .then(res => res.json())
+                .then(data => {
+                    const loadedSlices = data.slices || [];
+                    if (loadedSlices.length === 0) {
+                        img.src = "";
+                        filenameDisplay.textContent = "No slices available.";
+                        slider.disabled = true;
+                        return;
+                    }
+
+                    slices[orientation] = loadedSlices;
+                    currentOrientation = orientation;
+                    slider.max = loadedSlices.length - 1;
+                    slider.value = Math.floor(loadedSlices.length / 2);
+                    slider.disabled = false;
+                    updateSlice();
+                })
+                .catch(err => {
+                    console.error("Error fetching slices:", err);
+                    img.src = "";
+                    filenameDisplay.textContent = "Error loading slices.";
+                    slider.disabled = true;
+                });
+        }
+
+        function updateSlice() {
+            const orientation = currentOrientation;
+            const index = parseInt(slider.value);
+            const current = slices[orientation];
+
+            if (current && current[index]) {
+                const filename = current[index].split('/').pop();
+                img.src = current[index];
+                filenameDisplay.textContent = filename;
+            } else {
+                img.src = "";
+                filenameDisplay.textContent = "";
+            }
+        }
+
+        orientationSelect.addEventListener('change', () => {
+            fetchSlices(orientationSelect.value);
+        });
+
+        slider.addEventListener('input', updateSlice);
+
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchSlices(currentOrientation);
+        });
+    </script>
+</section>
+{% endblock %}
