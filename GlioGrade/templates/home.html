@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}GlioGrade{% endblock %}
+
+{% block body_class %}home{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+        <h1>Precision Glioma <span>Diagnosis</span></h1>
+        <p>Upload an MRI scan to detect and grade gliomas using advanced machine learning.</p>
+        <div class="button-group">
+            <a href="{{ url_for('upload') }}" class="cta special">Upload Scan</a>
+        </div>
+    </div>
+</section>
+
+<section class="features">
+    <h2>Why GliomaDx?</h2>
+    <div class="feature-grid">
+        <div class="feature">
+            <h3>Efficiency</h3>
+            <p>Quickly process a single scan to produce multi-axis visualization and diagnosis.</p>
+        </div>
+        <div class="feature">
+            <h3>Automation</h3>
+            <p>Automatically extract scan ID and retrieve known pathology labels from metadata.</p>
+        </div>
+        <div class="feature">
+            <h3>Clarity</h3>
+            <p>Explore the MRI in 3D slices and understand both type and grade confidently.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
