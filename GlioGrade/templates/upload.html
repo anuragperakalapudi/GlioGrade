@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Scan{% endblock %}
+
+{% block body_class %}upload{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+        <h1>Upload Your <span>Scan</span></h1>
+        <p>Submit a single T2 MRI file (.nii or .nii.gz) to begin diagnosis.</p>
+    </div>
+</section>
+
+<div class="container upload-panel">
+    <form action="{{ url_for('upload') }}" method="POST" enctype="multipart/form-data">
+        <div class="custom-file-input">
+            <input type="file" name="scan" id="scan" required>
+            <button type="button" class="file-btn">Select Scan</button>
+            <span class="file-name">No file selected</span>
+        </div>
+        <button type="submit" class="cta special">Analyze Scan</button>
+    </form>
+</div>
+
+<script>
+    document.querySelector('#scan').addEventListener('change', function() {
+        const fileNameSpan = this.parentElement.querySelector('.file-name');
+        if (this.files.length > 0) {
+            fileNameSpan.textContent = this.files[0].name;
+        } else {
+            fileNameSpan.textContent = 'No file selected';
+        }
+    });
+</script>
+{% endblock %}
