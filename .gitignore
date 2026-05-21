@@ -1,0 +1,29 @@
+# Claude Code
+.claude/
+
+# Model weights (stored on Google Drive, never committed)
+models/*.keras
+models/*.pt
+models/*.pth
+models/*.h5
+models/*.pkl
+
+# Flask runtime dirs
+app/uploads/
+app/static/slices/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
