@@ -78,22 +78,38 @@ The UCSF dataset is already skull-stripped and normalized — no manual preproce
 
 ### UCSF-PDGM (primary — training)
 
-- **Source:** The Cancer Imaging Archive (TCIA)
+- **Source:** The Cancer Imaging Archive (TCIA) — https://www.cancerimagingarchive.net/collection/ucsf-pdgm/
 - **Patients:** 495 (some IDs are follow-up scans of the same patient)
 - **Classification:** WHO 2021
 - **Size:** ~156 GB full dataset; ~1 GB for T2_bias scans only
-- **Preprocessing:** Already skull-stripped and bias-corrected
+- **Preprocessing (done by UCSF, confirmed on TCIA page):**
+  - Skull-stripped ✅
+  - Bias-field corrected ✅ — the `_bias` suffix in the filename IS the bias correction label
+  - Co-registered to T2/FLAIR space at **1mm isotropic resolution** using ANTs ✅
+  - Converted to NIfTI format ✅
+  - **We do not need to run skull stripping or N4 bias correction ourselves.**
 - **Metadata file:** `UCSF-PDGM-metadata_v2.csv`
   - Key column: `Final pathologic diagnosis (WHO 2021)`
   - ID column: `ID` (format: `UCSF-PDGM-XXXX`)
-- **Storage:** On Google Drive (multiple versions in different folders — see Section 8)
 
-### Erasmus Glioma Database (secondary — NOT in scope right now)
+### Confirmed Drive folder layout (audited manually, May 2026)
+
+| Drive path | Contents | Use? |
+|---|---|---|
+| `MyDrive/UCSF_data/T2biasCollected/` | Raw UCSF-PDGM T2_bias NIfTIs, files named `UCSF-PDGM-XXXX_T2_bias.nii.gz`. No notebook ever wrote to this folder — it is original data. | **✅ Use this for training** |
+| `MyDrive/UCSF_data/T2Typing/T2Training/` | T2_bias scans pre-organized into 4 WHO class subfolders with a train/val split | Reference only — derived from above |
+| `MyDrive/data/UCSF_T2Flair/T2FlairCollected/` | UCSF-PDGM FLAIR scans (different modality, same patients). Files named `UCSF-PDGM-XXXX_FLAIR.nii.gz` | Not used for now |
+| `MyDrive/data/EGD_data_T2/` | Erasmus (EGD) raw T2 scans — WHO 2016 labels | ❌ Skip |
+| `MyDrive/data/EGD_data_T2/stripped/` | EGD skull-stripped output | ❌ Skip |
+| `MyDrive/data/EGD_data_T2/biased+stripped/` | EGD N4-corrected output (also resized to 64³ in some versions) | ❌ Skip |
+
+**Confirmed metadata path:** `MyDrive/UCSF_data/UCSF-PDGM-metadata_v2.csv`
+
+### Erasmus Glioma Database (out of scope)
 
 - **Patients:** 774
-- **Classification:** WHO 2016 (different from training data — causes domain shift)
-- **Preprocessing:** Raw, needs skull stripping + bias correction
-- **Decision:** Skip for now. Focus on UCSF only.
+- **Classification:** WHO 2016 (incompatible with our WHO 2021 labels)
+- **Decision:** Skip entirely. Focus on UCSF only.
 
 ---
 
@@ -200,9 +216,24 @@ The poster describes multiplying T2 FLAIR × segmentation mask to isolate the tu
 
 ## 6. The Full Plan Going Forward
 
-### Phase 1: Data audit
-Run `training/notebooks/00_data_audit.ipynb` on Colab.
-Goal: know exactly which Drive folder has the best preprocessed data, confirm patient counts, confirm metadata CSV alignment, see real class distribution.
+### Phase 1: Data audit — COMPLETE (done manually, May 2026)
+
+The data audit was done by reviewing all legacy training notebooks directly rather than running automated tooling.
+
+**Findings:**
+- Training data confirmed at `MyDrive/UCSF_data/T2biasCollected/` — original UCSF-PDGM T2_bias NIfTIs, never modified by any notebook
+- UCSF-PDGM data is already skull-stripped, bias-corrected, and 1mm isotropic — confirmed on TCIA and in source code (N4 bias correction was explicitly skipped for UCSF in notebooks)
+- Modality to use: **T2_bias** (consistent with best training notebooks)
+- The old preprocessing pipeline had two critical data bugs: (1) min-max normalization over full volume including zero-background voxels, and (2) using `tf.image.resize` on 2 dims + `np.resize` on the third — this corrupts 3D structure entirely
+- EGD (Erasmus) data is irrelevant — WHO 2016 labels, kept separately in `EGD_data_T2/`
+- See `training/legacy/ANALYSIS_REPORT.md` for the full audit findings
+
+**What this means for preprocessing:**
+- ❌ Skip: skull stripping (done by UCSF)
+- ❌ Skip: bias correction / N4 (done by UCSF — `_bias` suffix confirms it)
+- ✅ Run: z-score normalization on brain voxels only
+- ✅ Run: proper 3D resize to 96³ (using `scipy.ndimage.zoom`, not `tf.image.resize`)
+- ✅ Run: save as `.npy` + build manifest CSV
 
 ### Phase 2: Fix training pipeline
 - Stratified splits
@@ -255,8 +286,7 @@ GlioGrade/
 │
 ├── training/                     ← All ML code
 │   ├── notebooks/
-│   │   ├── 00_data_audit.ipynb      ← run first — audits Drive folders
-│   │   ├── 01_preprocessing.ipynb   ← z-score norm, resize, verify outputs
+│   │   ├── 01_preprocessing.ipynb   ← z-score norm, resize, save .npy + manifest
 │   │   ├── 02_eda.ipynb             ← class distribution, volume stats, vis
 │   │   ├── 03_train_binary.ipynb    ← binary LGG vs HGG (pipeline validation)
 │   │   ├── 04_train_grade.ipynb     ← 3-class grade model
@@ -309,7 +339,8 @@ No manual upload needed.
 from google.colab import drive
 drive.mount('/content/drive')
 
-DATA_DIR  = '/content/drive/MyDrive/GlioGrade/UCSF-PDGM'   # update after audit
+DATA_DIR  = '/content/drive/MyDrive/UCSF_data/T2biasCollected'   # confirmed
+META_CSV  = '/content/drive/MyDrive/UCSF_data/UCSF-PDGM-metadata_v2.csv'
 MODEL_OUT = '/content/drive/MyDrive/GlioGrade/models'
 
 # Cell 2 — Pull latest src/ from repo
@@ -328,11 +359,14 @@ sys.path.insert(0, '/content/GlioGrade/training/src')
 
 ## 9. Preprocessing Pipeline
 
-### What the UCSF-PDGM data already has (no extra steps needed for training)
+### What the UCSF-PDGM data already has — confirmed, do not repeat these
 
-- Skull-stripped (brain parenchyma only, skull voxels = 0)
-- Bias-field corrected (T1_bias, T2_bias variants)
-- Co-registered (all modalities aligned per patient)
+- ✅ Skull-stripped (skull voxels = 0, zero fraction > 30% of volume)
+- ✅ Bias-field corrected — the `_bias` in `T2_bias.nii.gz` is the correction flag. Do NOT run N4 again.
+- ✅ Co-registered to T2/FLAIR space at 1mm isotropic resolution (ANTs)
+- ✅ Converted to NIfTI
+
+**The old notebooks incorrectly applied bias correction and skull stripping to the UCSF data in some branches — those runs were either errored out or run on EGD data only. T2biasCollected is untouched original data.**
 
 ### What we do in the preprocessing notebook (01_preprocessing.ipynb)
 
@@ -493,15 +527,16 @@ Each notebook is self-contained and Colab-ready. All notebooks start with Drive 
 
 | Notebook | Purpose | Inputs | Outputs |
 |---|---|---|---|
-| `00_data_audit.ipynb` | Audit all Drive folders | Folder paths (config cell) | Report: counts, preprocessing state, class distribution |
-| `01_preprocessing.ipynb` | Normalize + resize volumes | Raw T2_bias NIfTIs + metadata CSV | `.npy` files + manifest CSV |
+| `01_preprocessing.ipynb` | Z-score normalize + resize volumes | Raw T2_bias NIfTIs from `T2biasCollected/` + metadata CSV | `.npy` files + manifest CSV |
 | `02_eda.ipynb` | Explore dataset | Manifest CSV + `.npy` files | Class distribution plots, volume stats, sample visualizations |
 | `03_train_binary.ipynb` | Binary LGG vs HGG (pipeline validator) | Preprocessed volumes | Binary model checkpoint, metrics |
 | `04_train_grade.ipynb` | 3-class grade model | Preprocessed volumes | Grade model `.pt` |
 | `05_train_type.ipynb` | 4-class type model | Preprocessed volumes | Type model `.pt` |
 | `06_evaluation.ipynb` | Full evaluation | Model checkpoints + test set | Confusion matrices, F1, Kappa, AUC, per-class breakdown |
 
-**Run order:** 00 → 01 → 02 → 03 (validate) → 04 → 05 → 06
+**Run order:** 01 → 02 → 03 (validate) → 04 → 05 → 06
+
+**Note:** `00_data_audit.ipynb` and `00b_compare_audits.ipynb` were deleted — the data audit was completed manually by reviewing legacy notebooks. Findings are in `training/legacy/ANALYSIS_REPORT.md`.
 
 ---
 
@@ -530,24 +565,24 @@ Each notebook is self-contained and Colab-ready. All notebooks start with Drive 
 
 ---
 
-## 15. Open Questions and Decisions Still Needed
+## 15. Resolved Questions and Remaining Decisions
 
-These require the data audit output (`00_data_audit.ipynb`) before they can be answered:
+### Resolved (May 2026 audit)
 
-- **Which Drive folder is the best preprocessed version to use?**
-  Several versions of the dataset are scattered across Drive folders. The audit will determine which one to use.
+- **Which folder to use?** `MyDrive/UCSF_data/T2biasCollected/` — confirmed original, unmodified data.
+- **Which scan type?** T2_bias — consistent across the most complete training notebooks, already bias-corrected.
+- **Do we need skull stripping?** No — UCSF-PDGM is pre-stripped. Confirmed on TCIA and in source notebooks.
+- **Do we need bias correction?** No — `_bias` suffix confirms it is already done. Old notebooks explicitly skipped N4 for UCSF.
+- **What did the old pipeline do wrong?** Two critical bugs: (1) min-max normalization over the full volume including zero background, (2) `tf.image.resize` on 2D slices + `np.resize` for the third axis — this completely corrupts 3D spatial structure. Plus 64³ was too small (4× downsampling destroys tumor detail).
+- **What preprocessing is still needed?** Only: z-score normalization on brain voxels + proper 3D resize to 96³ + save as `.npy` + manifest CSV.
+- **Is the EGD data usable?** No — WHO 2016 labels, incompatible. Skip entirely.
 
-- **What scan type is actually available for all patients?**
-  The original training used T2_bias. If some patients are missing T2_bias, we may need to fall back to T2 or T2_FLAIR. The audit will confirm.
+### Still open
 
-- **How many patients actually have usable data?**
-  495 is the total, but some patients may have corrupted files, missing labels, or misc label classes that must be dropped. The audit confirms the real usable count.
-
-- **Do the existing training notebooks reveal any additional preprocessing that was done?**
-  The audit scans existing `.ipynb` files on Drive and extracts preprocessing-related code. There may be steps done in earlier experiments that are worth reusing or avoiding.
-
-- **Input volume size: 64³ vs 96³ vs 128³?**
-  96³ is the current plan. This can be revisited after seeing actual volume shapes in the audit. Larger is better for the CNN but costs more GPU memory on Colab.
+- **Exact patient count in T2biasCollected:** Expected ~495 but not verified on Drive. Run a quick `len(os.listdir(...))` check in Colab before preprocessing.
+- **Any patients with missing/misc labels in metadata?** The metadata has some labels outside the 4 WHO 2021 classes — these must be dropped. The exact count is unknown until preprocessing runs.
+- **Input size 96³ vs 128³?** 96³ is the plan. If Colab A100/V100 has enough VRAM, 128³ is worth trying (better spatial resolution for the CNN). Decide at preprocessing time based on the actual volume dimensions from T2biasCollected.
+- **Single model vs two separate models?** Current plan: two separate models (grade + type). A shared backbone with two heads is an option worth considering if GPU memory is tight.
 
 ---
 

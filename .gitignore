@@ -24,6 +24,9 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
+# Legacy notebooks (local reference only, not part of clean pipeline)
+training/legacy/
+
 # OS
 .DS_Store
 Thumbs.db
